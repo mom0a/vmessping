@@ -1,0 +1,67 @@
+name: Build
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+
+      - name: Checkout codebase
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Generate Git log
+        run: |
+          git fetch origin +refs/tags/*:refs/tags/*
+          GITVER=$(git describe --tags)
+          PREVVER=$(git describe --tags --abbrev=0 ${GITVER}~1)
+          git log --oneline ${PREVVER}..${GITVER} > gitlogs.txt
+      - name: Set variables
+        run: |
+          echo "VERSION=$(git describe --tags || git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "LDFLAGS=$(echo "-s -w -buildid= -X main.MAINVER=${VERSION}")" >> $GITHUB_ENV
+      - name: Build Vmessping
+        run: |
+          BINNAME=vmessping
+          GOOS=linux GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_linux ./cmd/${BINNAME}
+          GOOS=windows GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_windows.exe ./cmd/${BINNAME}
+          zip ./${BINNAME}_amd64_linux.zip ${BINNAME}_amd64_linux
+          zip ./${BINNAME}_amd64_windows.zip ${BINNAME}_amd64_windows.exe
+      - name: Build Vmessconv
+        run: |
+          BINNAME=vmessconv
+          GOOS=linux GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_linux ./cmd/${BINNAME}
+          GOOS=windows GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_windows.exe ./cmd/${BINNAME}
+          zip ./${BINNAME}_amd64_linux.zip ${BINNAME}_amd64_linux
+          zip ./${BINNAME}_amd64_windows.zip ${BINNAME}_amd64_windows.exe
+      - name: Build VmessSpeed
+        run: |
+          BINNAME=vmessspeed
+          GOOS=linux GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_linux ./cmd/${BINNAME}
+          GOOS=windows GOARCH=amd64 go build -v -ldflags="${LDFLAGS}" -o ${BINNAME}_amd64_windows.exe ./cmd/${BINNAME}
+          zip ./${BINNAME}_amd64_linux.zip ${BINNAME}_amd64_linux  
+          zip ./${BINNAME}_amd64_windows.zip ${BINNAME}_amd64_windows.exe
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          prerelease: false
+          draft: false
+          body_path: gitlogs.txt
+          files: |
+            vmessping_amd64_linux.zip 
+            vmessping_amd64_windows.zip 
+            vmessconv_amd64_linux.zip 
+            vmessconv_amd64_windows.zip 
+            vmessspeed_amd64_linux.zip 
+            vmessspeed_amd64_windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
